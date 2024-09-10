@@ -282,11 +282,25 @@ void part5(char *filename)
 
 	printf("===== Question 34 =====\n");
 
+	nread = read(fd2, buf + totread, 4);
+	totread += nread;
+
+	printf("number read: %lu\n", nread);
+	printf("total read: %lu\n", totread);
+	memprint(buf, "%02x", BUFSIZE);
+
 	printf("===== Question 35 (no code changes) =====\n");
 
 	printf("===== Question 36 (no code changes) =====\n");
 
 	printf("===== Question 37 =====\n");
+
+	nread = read(fd2, buf + totread, BUFSIZE - totread);
+	totread += nread;
+
+	printf("number read: %lu\n", nread);
+	printf("total read: %lu\n", totread);
+	memprint(buf, "%02x", BUFSIZE);
 
 	printf("===== Question 38 (no code changes) =====\n");
 
@@ -296,26 +310,70 @@ void part5(char *filename)
 
 	printf("===== Question 41 =====\n");
 
+	nread = read(fd2, buf + totread, BUFSIZE - totread);
+	totread += nread;
+
+	printf("number read: %lu\n", nread);
+	printf("total read: %lu\n", totread);
+	memprint(buf, "%02x", BUFSIZE);
+
 	printf("===== Question 42 =====\n");
+
+	printf("%s\n", buf);
 
 	printf("===== Question 43 =====\n");
 
+	buf[totread] = 0;
+	printf("%s\n", buf);
+
 	printf("===== Question 44 =====\n");
+
+	printf("%d\n", close(fd1));
 
 	printf("===== Question 45 =====\n");
 	int ret = 0;
+	printf("%d\n", close(fd2));
 
 	printf("===== Question 46 =====\n");
 
+	fprintf(stdout, "abc");
+	fprintf(stderr, "def");
+	fprintf(stdout, "ghi\n");
+
+	write(1, "abc", 3);
+	write(2, "def", 3);
+	write(1, "ghi\n", 4);
+
 	printf("===== Question 47 =====\n");
 
+	fprintf(stdout, "abc");
+	fprintf(stderr, "def");
+	fprintf(stdout, "ghi\n");
+
+	write(1, "abc", 3);
+	write(2, "def", 3);
+	write(1, "ghi\n", 4);
+
 	printf("===== Question 48 =====\n");
+
+	fprintf(stdout, "abc");
+	fflush(stdout);
+	fprintf(stderr, "def");
+	fprintf(stdout, "ghi\n");
+
+	write(1, "abc", 3);
+	write(2, "def", 3);
+	write(1, "ghi\n", 4);
 }
 
 void part6()
 {
 	printf("===== Question 49 =====\n");
 	char *s1;
+
+	s1 = getenv("CS324_VAR") ? getenv("CS324_VAR") : "not found";
+
+	printf("CS324_VAR is %s\n", s1);
 
 	printf("===== Question 50 (no code changes) =====\n");
 }
