@@ -92,6 +92,10 @@ int main(int argc, char **argv)
 
 	exit(0); /* control never reaches here */
 }
+
+void run_child(char **argv, int *cmds, int pid){
+
+}
   
 /* 
  * eval - Evaluate the command line that the user has just typed in
@@ -114,13 +118,30 @@ void eval(char *cmdline)
 
 	builtin_cmd(argv);
 
-	pid_t pid;
-	pid = fork();
-	if(pid < 0){
+	int pipe_fd[2];
+	int p = pipe(pipe_fd);
+	if ( p < 0)
+	{
+		fprintf(stderr, "error when creating pipe");
+		exit(0);
+	}
+
+	pid_t pid1;
+	pid1 = fork();
+
+	if(pid1 < 0){
 		fprintf(stderr, "error when forking");
 		exit(0);
 	}
-	else if(pid == 0){
+	else if(pid1 == 0){
+		// connect to write end of the pipe
+		dup2(pipe_fd[1], 1);
+		// close the read end of the pipe
+		close(pipe_fd[0]);
+		// close the extra write end of the pipe
+		close(pipe_fd[1]);
+
+		// if we need to redirect stdin
 		if(std_in[0] >= 0){
 			// open the file
 			int fd = open(argv[std_in[0]], O_RDONLY, 0600);
@@ -131,24 +152,61 @@ void eval(char *cmdline)
 			// close the extra fd
 			close(fd);
 		}
-		
-		if(std_out[0] >= 0){
 
-			// open the file
-			int fd = open(argv[std_out[0]], O_WRONLY | O_CREAT | O_TRUNC, 0600);
-			
-			// redirect std out
-			dup2(fd, 1);
-			
-			// close the extra fd
-			close(fd);
-		}
-
+		// run the command
 		execv(argv[cmds[0]], &argv[cmds[0]]);
 	}
 	else {
-		setpgid(pid, pid);
-		waitpid(pid, NULL, 0);
+
+		pid_t pid2;
+		pid2 = fork();
+
+		if (pid2 < 0){
+			fprintf(stderr, "error when forking");
+			exit(0);
+		}
+		else if (pid2 == 0)
+		{
+			// connect to the read end of the pipe
+			dup2(pipe_fd[0], 0);
+			// close the write end of the pipe
+			close(pipe_fd[1]);
+			// close the extra read end of the pipe
+			close(pipe_fd[0]);
+
+			// if we need to redirect stdout
+			if (std_out[0] >= 0)
+			{
+				// open the file
+				int fd = open(argv[std_out[0]], O_WRONLY | O_CREAT | O_TRUNC, 0600);
+
+				// redirect std out
+				dup2(fd, 1);
+
+				// close the extra fd
+				close(fd);
+			}
+
+			// run the command
+			execv(argv[cmds[1]], &argv[cmds[1]]);
+		}
+		else {
+			// parent(shell) doesn't need access to the pipe
+			close(pipe_fd[0]);
+			close(pipe_fd[1]);
+
+			// set group id of child 1
+			setpgid(pid1, pid1);
+
+			// wait for child 1
+			waitpid(pid1, NULL, 0);
+
+			// set the group ID of child 2
+			setpgid(pid2, pid1);
+
+			// wait for child 2
+			waitpid(pid2, NULL, 0);
+		}
 	}
 
 	return;
