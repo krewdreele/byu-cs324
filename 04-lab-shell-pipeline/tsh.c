@@ -12,6 +12,7 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <errno.h>
+#include <asm-generic/fcntl.h>
 
 /* Misc manifest constants */
 #define MAXLINE    1024   /* max line size */
@@ -101,6 +102,55 @@ int main(int argc, char **argv)
 */
 void eval(char *cmdline) 
 {
+
+	char *argv[MAXARGS];
+	int cmds[MAXARGS];
+	int std_in[MAXARGS];
+	int std_out[MAXARGS];
+
+	parseline(cmdline, argv);
+
+	parseargs(argv, cmds, std_in, std_out);
+
+	builtin_cmd(argv);
+
+	pid_t pid;
+	pid = fork();
+	if(pid < 0){
+		fprintf(stderr, "error when forking");
+		exit(0);
+	}
+	else if(pid == 0){
+		if(std_in[0] >= 0){
+			// open the file
+			int fd = open(argv[std_in[0]], O_RDONLY, 0600);
+			
+			// redirect std in
+			dup2(fd, 0);
+			
+			// close the extra fd
+			close(fd);
+		}
+		
+		if(std_out[0] >= 0){
+
+			// open the file
+			int fd = open(argv[std_out[0]], O_WRONLY | O_CREAT | O_TRUNC, 0600);
+			
+			// redirect std out
+			dup2(fd, 1);
+			
+			// close the extra fd
+			close(fd);
+		}
+
+		execv(argv[cmds[0]], &argv[cmds[0]]);
+	}
+	else {
+		setpgid(pid, pid);
+		waitpid(pid, NULL, 0);
+	}
+
 	return;
 }
 
@@ -228,6 +278,9 @@ int parseline(const char *cmdline, char **argv)
  */
 int builtin_cmd(char **argv) 
 {
+	if(strcmp(argv[0], "quit") == 0){
+		exit(0);
+	}
 	return 0;     /* not a builtin command */
 }
 
