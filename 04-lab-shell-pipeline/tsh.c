@@ -12,7 +12,8 @@
 #include <sys/types.h>
 #include <sys/wait.h>
 #include <errno.h>
-#include <asm-generic/fcntl.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 /* Misc manifest constants */
 #define MAXLINE    1024   /* max line size */
@@ -114,99 +115,98 @@ void eval(char *cmdline)
 
 	parseline(cmdline, argv);
 
-	parseargs(argv, cmds, std_in, std_out);
+	int num_cmds = parseargs(argv, cmds, std_in, std_out);
 
 	builtin_cmd(argv);
 
-	int pipe_fd[2];
-	int p = pipe(pipe_fd);
-	if ( p < 0)
-	{
-		fprintf(stderr, "error when creating pipe");
-		exit(0);
-	}
+	pid_t groupID = 0;
 
-	pid_t pid1;
-	pid1 = fork();
+	// create the pipe
+	
+	int prev_read = 0;
 
-	if(pid1 < 0){
-		fprintf(stderr, "error when forking");
-		exit(0);
-	}
-	else if(pid1 == 0){
-		// connect to write end of the pipe
-		dup2(pipe_fd[1], 1);
-		// close the read end of the pipe
-		close(pipe_fd[0]);
-		// close the extra write end of the pipe
-		close(pipe_fd[1]);
+	for(int i=0; i < num_cmds; i++){
 
-		// if we need to redirect stdin
-		if(std_in[0] >= 0){
-			// open the file
-			int fd = open(argv[std_in[0]], O_RDONLY, 0600);
-			
-			// redirect std in
-			dup2(fd, 0);
-			
-			// close the extra fd
-			close(fd);
+		// for all but the last command, create a pipe
+		int pipe_fd[2];
+		if(i != num_cmds -1){
+			int p = pipe(pipe_fd);
+			if (p < 0)
+			{
+				fprintf(stderr, "error when creating pipe");
+				exit(0);
+			}
 		}
 
-		// run the command
-		execv(argv[cmds[0]], &argv[cmds[0]]);
-	}
-	else {
+		// fork the child
+		pid_t pid1;
+		pid1 = fork();
 
-		pid_t pid2;
-		pid2 = fork();
-
-		if (pid2 < 0){
+		if (pid1 < 0)
+		{
 			fprintf(stderr, "error when forking");
 			exit(0);
 		}
-		else if (pid2 == 0)
-		{
-			// connect to the read end of the pipe
-			dup2(pipe_fd[0], 0);
-			// close the write end of the pipe
-			close(pipe_fd[1]);
-			// close the extra read end of the pipe
-			close(pipe_fd[0]);
+		if (i == 0){ 
+			// set the group ID to the first child's ID
+			groupID = pid1;
+		}
 
-			// if we need to redirect stdout
-			if (std_out[0] >= 0)
+		if (pid1 == 0) // Child process
+		{
+			// first command
+			if (i ==0 && std_in[i] >= 0)
 			{
 				// open the file
-				int fd = open(argv[std_out[0]], O_WRONLY | O_CREAT | O_TRUNC, 0600);
+				int fd = open(argv[std_in[i]], O_RDONLY, 0600);
+				dup2(fd, 0);	// redirect std in
+				close(fd); 		// close the extra fd
+			}
 
-				// redirect std out
-				dup2(fd, 1);
+			// For all but the first command, connect to the previous pipe
+			if(i > 0){
+				dup2(prev_read, 0); 	// connect to the read end of the previous pipe
+				close(prev_read);		// close hanging connection
+			}
+		
 
-				// close the extra fd
-				close(fd);
+			// For all but the last command, connect to the write end of the pipe
+			if(i != num_cmds - 1){
+				dup2(pipe_fd[1], 1);	// connect to write end of the pipe
+				close(pipe_fd[1]);		// close the extra fd to write end of the pipe
+				close(pipe_fd[0]); 		// close the read end of the pipe
+			}
+
+			// if last command needs to redirect stdout
+			if (i == num_cmds - 1 && std_out[i] >= 0)
+			{
+				// open the file
+				int fd = open(argv[std_out[i]], O_WRONLY | O_CREAT | O_TRUNC, 0600);
+
+				dup2(fd, 1);	// redirect std out
+				close(fd); 		// close the extra fd
 			}
 
 			// run the command
-			execv(argv[cmds[1]], &argv[cmds[1]]);
+			execv(argv[cmds[i]], &argv[cmds[i]]);
 		}
-		else {
-			// parent(shell) doesn't need access to the pipe
-			close(pipe_fd[0]);
-			close(pipe_fd[1]);
+		else
+		{
+			if (i != 0){
+				close(prev_read); 		// Parent doesn't need the previous read end
+			}
 
-			// set group id of child 1
-			setpgid(pid1, pid1);
+			if (i != num_cmds - 1){
+				prev_read = pipe_fd[0]; // Save read end for the next command
+				close(pipe_fd[1]);		// Parent doesn't need the write end
+			}
 
-			// wait for child 1
-			waitpid(pid1, NULL, 0);
-
-			// set the group ID of child 2
-			setpgid(pid2, pid1);
-
-			// wait for child 2
-			waitpid(pid2, NULL, 0);
+			setpgid(pid1, groupID); 	// Set process group ID for job control
 		}
+	}
+
+	for (int i = 0; i < num_cmds; i++){
+		waitpid(-1, NULL, 0); 		// Wait for all child processes to finish
 	}
 
 	return;
