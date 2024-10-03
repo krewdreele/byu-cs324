@@ -5,6 +5,7 @@
 #include<sys/types.h>
 #include<sys/wait.h>
 #include<errno.h>
+#include <asm-generic/signal-defs.h>
 
 #define MAXPIDLEN 10
 
