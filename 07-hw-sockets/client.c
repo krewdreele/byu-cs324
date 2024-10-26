@@ -177,7 +177,7 @@ int main(int argc, char *argv[]) {
 	int tot_bytes_sent = 0;
 
 	while(1) {
-		nsent = send(sfd, buf + tot_bytes_sent, 1, 0);
+		nsent = send(sfd, buf + tot_bytes_sent, BUF_SIZE, 0);
 
 		if(nsent < 0){
 			perror("sending input");
