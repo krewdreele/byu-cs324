@@ -45,8 +45,8 @@ int main(int argc, char *argv[]) {
 	// (IPv6-only), or AF_UNSPEC (either IPv4 or IPv6), depending on what
 	// was passed in on the command line.
 	hints.ai_family = af;
-	// Use type sock stream (TCP)
-	hints.ai_socktype = SOCK_STREAM;
+	// Use type SOCK_DGRAM (UDP)
+	hints.ai_socktype = SOCK_DGRAM;
 
 
 	/* SECTION A - pre-socket setup; getaddrinfo() */
@@ -122,7 +122,7 @@ int main(int argc, char *argv[]) {
 
 		// If connect() succeeds, then break out of the loop; we will
 		// use the current address as our remote address.
-		if (connect(sfd, remote_addr, addr_len) >= 0)
+		//if (connect(sfd, remote_addr, addr_len) >= 0)
 			break;
 
 		close(sfd);
@@ -153,46 +153,40 @@ int main(int argc, char *argv[]) {
 
 	/* SECTION C - interact with server; send, receive, print messages */
 
-	int nread;
-	int tot_bytes_read = 0;
-	int bytes_to_read = 512;
-	unsigned char buf[4096];
+	// Send remaining command-line arguments as separate
+	// datagrams, and read responses from server.
+	for (int j = hostindex + 2; j < argc; j++) {
+		// buf will hold the bytes we read from the socket.
+		char buf[BUF_SIZE];
 
-	while(1){
-		nread = read(0, buf + tot_bytes_read, 1);
+		// len includes the count of all characters comprising the
+		// null-terminated string argv[j], but not the null byte
+		// itself.
+		size_t len = strlen(argv[j]);
+		if (len > BUF_SIZE) {
+			fprintf(stderr,
+					"Ignoring long message in argument %d\n", j);
+			continue;
+		}
 
-		if(nread < 0){
-			perror("receiving input");
+		//ssize_t nwritten = send(sfd, argv[j], len, 0);
+		ssize_t nwritten = sendto(sfd, argv[j], len, 0, remote_addr, addr_len);
+		if (nwritten < 0) {
+			perror("send");
 			exit(EXIT_FAILURE);
 		}
+		printf("Sent %zd bytes: %s\n", len, argv[j]);
 
-		tot_bytes_read = tot_bytes_read + nread;
+		//ssize_t nread = recv(sfd, buf, BUF_SIZE, 0);
+		//buf[nread] = '\0';
+		//if (nread < 0) {
+		//	perror("read");
+		//	exit(EXIT_FAILURE);
+		//}
 
-		if(nread == 0 || tot_bytes_read == 4096){
-			break;
-		}
+		//printf("Received %zd bytes: %s\n", nread, buf);
+
 	}
-
-	int nsent;
-	int tot_bytes_sent = 0;
-
-	while(1) {
-		nsent = send(sfd, buf + tot_bytes_sent, 1, 0);
-
-		if(nsent < 0){
-			perror("sending input");
-			exit(EXIT_FAILURE);
-		}
-
-		tot_bytes_sent += nsent;
-
-		if(nsent == 0 || tot_bytes_sent >= tot_bytes_read){
-			printf("bytes read: %d", tot_bytes_read);
-			printf("bytes sent: %d", tot_bytes_sent);
-			break;
-		}
-	}
-	
 
 	exit(EXIT_SUCCESS);
 }

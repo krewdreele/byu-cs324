@@ -153,46 +153,42 @@ int main(int argc, char *argv[]) {
 
 	/* SECTION C - interact with server; send, receive, print messages */
 
-	int nread;
-	int tot_bytes_read = 0;
-	int bytes_to_read = 512;
-	unsigned char buf[4096];
+	// Send remaining command-line arguments as separate
+	// datagrams, and read responses from server.
+	for (int j = hostindex + 2; j < argc; j++) {
+		// buf will hold the bytes we read from the socket.
+		char buf[BUF_SIZE];
 
-	while(1){
-		nread = read(0, buf + tot_bytes_read, 1);
+		// len includes the count of all characters comprising the
+		// null-terminated string argv[j], but not the null byte
+		// itself.
+		size_t len = strlen(argv[j]);
+		if (len > BUF_SIZE) {
+			fprintf(stderr,
+					"Ignoring long message in argument %d\n", j);
+			continue;
+		}
 
-		if(nread < 0){
-			perror("receiving input");
+		ssize_t nwritten = send(sfd, argv[j], len, 0);
+		if (nwritten < 0) {
+			perror("send");
+			exit(EXIT_FAILURE);
+		}
+		printf("Sent %zd bytes: %s\n", len, argv[j]);
+
+		/*
+		ssize_t nread = recv(sfd, buf, BUF_SIZE, 0);
+		buf[nread] = '\0';
+		if (nread < 0) {
+			perror("read");
 			exit(EXIT_FAILURE);
 		}
 
-		tot_bytes_read = tot_bytes_read + nread;
+		printf("Received %zd bytes: %s\n", nread, buf);
 
-		if(nread == 0 || tot_bytes_read == 4096){
-			break;
-		}
+		*/
+
 	}
-
-	int nsent;
-	int tot_bytes_sent = 0;
-
-	while(1) {
-		nsent = send(sfd, buf + tot_bytes_sent, 1, 0);
-
-		if(nsent < 0){
-			perror("sending input");
-			exit(EXIT_FAILURE);
-		}
-
-		tot_bytes_sent += nsent;
-
-		if(nsent == 0 || tot_bytes_sent >= tot_bytes_read){
-			printf("bytes read: %d", tot_bytes_read);
-			printf("bytes sent: %d", tot_bytes_sent);
-			break;
-		}
-	}
-	
 
 	exit(EXIT_SUCCESS);
 }
