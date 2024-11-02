@@ -1,6 +1,6 @@
 // Replace PUT_USERID_HERE with your actual BYU CS user id, which you can find
 // by running `id -u` on a CS lab machine.
-#define USERID PUT_USERID_HERE
+#define USERID 1823731858
 
 #include <stdio.h>
 
@@ -11,6 +11,17 @@ int verbose = 0;
 void print_bytes(unsigned char *bytes, int byteslen);
 
 int main(int argc, char *argv[]) {
+	char *server = argv[1];
+	char *port = argv[2];
+	int port_num = atoi(port);
+	int level = atoi(argv[3]);
+	int seed = atoi(argv[4]);
+
+	printf("%s\n", server);
+	printf("%s\n", port);
+	printf("%d\n", port_num);
+	printf("%d\n", level);
+	printf("%d\n", seed);
 }
 
 void print_bytes(unsigned char *bytes, int byteslen) {
