@@ -186,9 +186,25 @@ int main(int argc, char *argv[])
 		unsigned short op_param;
 		memcpy(&op_param, &response[length + 2], 2);
 		op_param = ntohs(op_param);
-		
+
 		if(op_code == 1){
 			populate_sockaddr(remote_addr, addr_fam, remote_ip, op_param);
+		}
+
+		if(op_code == 2){
+			if ((sfd = socket(addr_fam, SOCK_DGRAM, 0)) < 0)
+			{
+				perror("Error creating socket");
+				exit(EXIT_FAILURE);
+			}
+
+			// Populate local_addr with the port using populate_sockaddr().
+			populate_sockaddr(local_addr, addr_fam, NULL, op_param);
+			if (bind(sfd, local_addr, sizeof(struct sockaddr_storage)) < 0)
+			{
+				perror("Could not bind");
+				exit(EXIT_FAILURE);
+			}
 		}
 
 		unsigned int nonce;
