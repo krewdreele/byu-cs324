@@ -185,11 +185,15 @@ int main(int argc, char *argv[])
 		unsigned char op_code = response[length + 1];
 		unsigned short op_param;
 		memcpy(&op_param, &response[length + 2], 2);
+		op_param = ntohs(op_param);
+		
+		if(op_code == 1){
+			populate_sockaddr(remote_addr, addr_fam, remote_ip, op_param);
+		}
 
 		unsigned int nonce;
 		memcpy(&nonce, &response[length + 4], 4);
 
-		op_param = ntohs(op_param);
 		nonce = ntohl(nonce);
 		nonce++;
 		nonce = htonl(nonce);
