@@ -6,6 +6,8 @@
 
 #include "sockhelper.h"
 
+#include <string.h>
+
 int verbose = 0;
 
 void print_bytes(unsigned char *bytes, int byteslen);
@@ -16,12 +18,23 @@ int main(int argc, char *argv[]) {
 	int port_num = atoi(port);
 	int level = atoi(argv[3]);
 	int seed = atoi(argv[4]);
+	
+	unsigned char buf[64];
 
-	printf("%s\n", server);
-	printf("%s\n", port);
-	printf("%d\n", port_num);
-	printf("%d\n", level);
-	printf("%d\n", seed);
+	bzero(buf, 64);
+
+	memcpy(&buf[1], &level, 1);
+
+	unsigned int val = htonl(USERID);
+
+	memcpy(&buf[2], &val, 4);
+
+	unsigned short val2 = htons(seed);
+
+	memcpy(&buf[6], &val2, 2);
+
+	print_bytes(buf, 8);
+
 }
 
 void print_bytes(unsigned char *bytes, int byteslen) {
