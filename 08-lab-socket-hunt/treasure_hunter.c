@@ -42,7 +42,6 @@ int main(int argc, char *argv[])
 
 	char *server = argv[optind];
 	char *port = argv[optind + 1];
-	int port_num = atoi(port);
 	int level = atoi(argv[optind + 2]);
 	int seed = atoi(argv[optind + 3]);
 	unsigned char buf[64];
@@ -187,6 +186,13 @@ int main(int argc, char *argv[])
 		memcpy(&op_param, &response[length + 2], 2);
 		op_param = ntohs(op_param);
 
+		unsigned int nonce;
+		memcpy(&nonce, &response[length + 4], 4);
+
+		nonce = ntohl(nonce);
+		nonce++;
+		nonce = htonl(nonce);
+
 		if(op_code == 1){
 			populate_sockaddr(remote_addr, addr_fam, remote_ip, op_param);
 		}
@@ -207,12 +213,47 @@ int main(int argc, char *argv[])
 			}
 		}
 
-		unsigned int nonce;
-		memcpy(&nonce, &response[length + 4], 4);
+		if(op_code == 3){
+			unsigned int sum = 0;
+			if(verbose){
+				printf("Op param: %x\n", op_param);
+			}
+			for (int i = 0; i < op_param; i++)
+			{
+				struct sockaddr_storage temp_remote_addr_ss;
+				struct sockaddr *temp_remote_addr = (struct sockaddr *)&temp_remote_addr_ss;
+				socklen_t temp_addr_len = sizeof (struct sockaddr_storage);
+				ssize_t nread = recvfrom(sfd, response, 0, 0, temp_remote_addr, &temp_addr_len);
+	
+				if(nread < 0){
+					perror("Error reading in datagrams from level 3");
+				}
+				char ip[INET6_ADDRSTRLEN];
+				unsigned short port;
+				parse_sockaddr(temp_remote_addr, ip, &port);
 
-		nonce = ntohl(nonce);
-		nonce++;
-		nonce = htonl(nonce);
+				sum += port;
+
+				if (verbose)
+				{
+					printf("Port (host order): %04x, Running sum: %04x\n", ntohs(port), sum);
+				}
+			}
+
+			nonce = sum + 1;
+			if (verbose)
+			{
+				printf("Sum of ports (before increment): %04x\n", sum);
+				printf("Nonce (before htonl): %08x\n", nonce);
+			}
+
+			nonce = htonl(nonce); // Convert to network byte order
+
+			if (verbose)
+			{
+				printf("Final nonce (network order): %08x\n", nonce);
+			}
+		}
 
 		size_t n = 4;
 		nwritten = sendto(sfd, &nonce, n, 0, remote_addr, addr_len);
