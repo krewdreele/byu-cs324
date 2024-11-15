@@ -1,4 +1,5 @@
 #include <stdio.h>
+#include <string.h>
 
 #include "sockhelper.h"
 
@@ -21,11 +22,67 @@ int main(int argc, char *argv[])
 }
 
 int complete_request_received(char *request) {
-	return 0;
+	char * eof = strstr(request, "\r\n\r\n");
+	if(eof == NULL){
+		return 0;
+	}
+	else{
+		return 1;
+	}
+
 }
 
 void parse_request(char *request, char *method,
 		char *hostname, char *port, char *path) {
+
+	int numSpaces = 0;
+	int index1 = 0;
+	char url[50];
+
+	for(int i=0; i < strlen(request); i++){
+		if(request[i] == ' ' && numSpaces == 0){
+			numSpaces++;
+			index1 = i;
+			memcpy(method, &request[0], index1);
+			method[index1] = '\0';
+			index1++;
+		}
+		else if (request[i] == ' ' && numSpaces == 1){
+			numSpaces++;
+			int length = i - index1 - 7;
+			memcpy(url, &request[index1+7], length);
+			url[length] = '\0';
+		}
+	}
+
+	char *colon = strstr(url, ":");
+	char *slash = strstr(url, "/");
+
+	int portlen = 0;
+	int hostlen = 0;
+
+	if(colon != NULL){
+		portlen = slash - colon - 1;
+		memcpy(port, colon + 1, portlen);
+
+		hostlen = colon - url;
+		memcpy(hostname, &url[0], hostlen);
+	}
+	else{
+		portlen = 2;
+		memcpy(port, &"80", portlen);
+
+		hostlen = slash - url;
+		memcpy(hostname, &url[0], hostlen);
+	}
+
+	int pathlen = strlen(slash);
+	memcpy(path, slash, pathlen);
+
+	path[pathlen] = '\0';
+	port[portlen] = '\0';
+	hostname[hostlen] = '\0';
+
 }
 
 void test_parser() {
