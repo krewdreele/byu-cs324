@@ -1,0 +1,19 @@
+*   Trying 192.168.2.43:2222...
+* Connected to castle (192.168.2.43) port 2222 (#0)
+> GET /bar.txt HTTP/1.1
+> Host: castle:2222
+> User-Agent: curl/7.81.0
+> Accept: */*
+> 
+* Mark bundle as not supporting multiuse
+* HTTP 1.0, assume close after body
+< HTTP/1.0 200 OK
+< Server: SimpleHTTP/0.6 Python/3.10.12
+< Date: Sat, 09 Nov 2024 22:26:46 GMT
+< Content-type: text/plain
+< Content-Length: 6
+< Last-Modified: Thu, 05 Sep 2024 15:39:52 GMT
+< 
+{ [6 bytes data]
+* Closing connection 0
+hello

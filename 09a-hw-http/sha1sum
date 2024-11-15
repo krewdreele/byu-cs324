@@ -1,0 +1,3 @@
+Hello CS324
+Query string: univ=byu&class=CS324&msg=hello%3Dworld%21
+Request body: username=user&password=pw

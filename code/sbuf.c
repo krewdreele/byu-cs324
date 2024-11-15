@@ -1,4 +1,5 @@
 /* $begin sbufc */
+#include <stdio.h>
 #include "sbuf.h"
 
 /* Create an empty, bounded, shared FIFO buffer with n slots */
@@ -26,11 +27,24 @@ void sbuf_deinit(sbuf_t *sp)
 /* $begin sbuf_insert */
 void sbuf_insert(sbuf_t *sp, int item)
 {
+    printf("before wait slots\n"); fflush(stdout);   	
     sem_wait(&sp->slots);                          /* Wait for available slot */
+    printf("after wait slots\n"); fflush(stdout);
+    
+    printf("before wait mutex\n"); fflush(stdout);
     sem_wait(&sp->mutex);                          /* Lock the buffer */
+    printf("after wait mutex\n"); fflush(stdout);
+
     sp->buf[(++sp->rear)%(sp->n)] = item;   /* Insert the item */
+    
+    printf("before post mutex\n"); fflush(stdout);
     sem_post(&sp->mutex);                          /* Unlock the buffer */
-    sem_post(&sp->items);                          /* Announce available item */
+    printf("after post mutex\n"); fflush(stdout);
+
+    printf("before post items\n"); fflush(stdout);
+    sem_post(&sp->items);
+    printf("after post items\n"); fflush(stdout);   
+    /* Announce available item */
 }
 /* $end sbuf_insert */
 
