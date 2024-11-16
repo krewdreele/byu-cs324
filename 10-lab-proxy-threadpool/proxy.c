@@ -44,8 +44,6 @@ void handle_client(int sfd){
 
 	buf[nread] = '\0';
 
-	print_bytes(buf, nread);
-
 	char method[16], hostname[64], port[8], path[64];
 
 	parse_request(buf, method, hostname, port, path);
@@ -54,6 +52,18 @@ void handle_client(int sfd){
 	printf("HOSTNAME: %s\n", hostname);
 	printf("PORT: %s\n", port);
 	printf("PATH: %s\n", path);
+
+	char request[1024];
+
+	snprintf(request, 1024,
+			 "%s %s HTTP/1.0\r\n"
+			 "Host: %s:%s\r\n"
+			 "User-Agent: %s\r\n"
+			 "Connection: close\r\n"
+			 "Proxy-Connection: close\r\n\r\n",
+			 method, path, hostname, port, user_agent_hdr);
+
+	print_bytes(request, strlen(request));
 }
 
 int open_sfd(char **argv){
@@ -98,7 +108,7 @@ int complete_request_received(char *request) {
 
 }
 
-void parse_request(char *request, char *method, char *hostname, char *port, char *path)
+void parse_request( char *request, char *method, char *hostname, char *port, char *path)
 {
 	// Ensure buffers are empty
 	method[0] = hostname[0] = port[0] = path[0] = '\0';
