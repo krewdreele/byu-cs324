@@ -2,6 +2,9 @@
 #include <string.h>
 #include <stdlib.h>
 #include "sockhelper.h"
+#include <sys/socket.h>
+#include <netdb.h>
+#include <unistd.h>
 
 /* Recommended max object size */
 #define MAX_OBJECT_SIZE 102400
@@ -32,20 +35,44 @@ int main(int argc, char *argv[])
 	return 0;
 }
 
-void handle_client(int sfd){
-	char buf[MAX_OBJECT_SIZE];
+void handle_client(int client_fd)
+{
+	char buf[1024];
+	ssize_t nread = 0;
+	int total_read = 0;
 
-	ssize_t nread = recv(sfd, buf, sizeof(buf) - 1, 0);
+	// Step 1: Read the full HTTP request from the client
+	do
+	{
+		if (total_read >= sizeof(buf))
+		{
+			fprintf(stderr, "Error: Request buffer overflow.\n");
+			close(client_fd);
+			return;
+		}
 
-	if(nread < 0){
-		perror("Error reading request from client");
-		exit(EXIT_FAILURE);
-	}
+		nread = recv(client_fd, buf + total_read, sizeof(buf) - total_read, 0);
 
-	buf[nread] = '\0';
+		if (nread > 0)
+		{
+			total_read += nread;
+			buf[total_read] = '\0'; // Null-terminate for safety
+		}
+		else if (nread < 0)
+		{
+			perror("recv");
+			close(client_fd);
+			return;
+		}
 
-	char method[16], hostname[64], port[8], path[64];
+		if (complete_request_received(buf))
+		{
+			break;
+		}
+	} while (nread > 0);
 
+	// Step 2: Parse the HTTP request
+	char method[16], hostname[64], port[8], path[128];
 	parse_request(buf, method, hostname, port, path);
 
 	printf("METHOD: %s\n", method);
@@ -53,17 +80,162 @@ void handle_client(int sfd){
 	printf("PORT: %s\n", port);
 	printf("PATH: %s\n", path);
 
+	// Step 3: Create a new HTTP request to send to the server
 	char request[1024];
+	if (strcmp(port, "80") == 0)
+	{
+		snprintf(request, sizeof(request),
+				 "%s %s HTTP/1.0\r\n"
+				 "Host: %s\r\n"
+				 "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:97.0) Gecko/20100101 Firefox/97.0\r\n"
+				 "Connection: close\r\n"
+				 "Proxy-Connection: close\r\n\r\n",
+				 method, path, hostname);
+	}
+	else
+	{
+		snprintf(request, sizeof(request),
+				 "%s %s HTTP/1.0\r\n"
+				 "Host: %s:%s\r\n"
+				 "User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:97.0) Gecko/20100101 Firefox/97.0\r\n"
+				 "Connection: close\r\n"
+				 "Proxy-Connection: close\r\n\r\n",
+				 method, path, hostname, port);
+	}
 
-	snprintf(request, 1024,
-			 "%s %s HTTP/1.0\r\n"
-			 "Host: %s:%s\r\n"
-			 "User-Agent: %s\r\n"
-			 "Connection: close\r\n"
-			 "Proxy-Connection: close\r\n\r\n",
-			 method, path, hostname, port, user_agent_hdr);
+	// Step 4: Connect to the HTTP server
+	int server_fd = connect_to_server(hostname, port);
+	if (server_fd < 0)
+	{
+		fprintf(stderr, "Error: Failed to connect to server.\n");
+		close(client_fd);
+		return;
+	}
 
-	print_bytes(request, strlen(request));
+	// Step 5: Send the HTTP request to the server
+	size_t total_sent = 0;
+	ssize_t nwritten;
+	size_t request_len = strlen(request);
+
+	while (total_sent < request_len)
+	{
+		nwritten = send(server_fd, request + total_sent, request_len - total_sent, 0);
+
+		if (nwritten < 0)
+		{
+			perror("send");
+			close(server_fd);
+			close(client_fd);
+			return;
+		}
+
+		total_sent += nwritten;
+	}
+
+	// Step 6: Receive the HTTP response from the server
+	char response[16384];
+	int total_response = 0;
+
+	do
+	{
+		if (total_response >= sizeof(response))
+		{
+			fprintf(stderr, "Error: Response buffer overflow.\n");
+			close(server_fd);
+			close(client_fd);
+			return;
+		}
+
+		nread = recv(server_fd, response + total_response, sizeof(response) - total_response, 0);
+
+		if (nread > 0)
+		{
+			total_response += nread;
+		}
+		else if (nread < 0)
+		{
+			perror("recv");
+			close(server_fd);
+			close(client_fd);
+			return;
+		}
+	} while (nread > 0);
+
+	// Step 7: Send the HTTP response back to the client
+	total_sent = 0;
+
+	while (total_sent < total_response)
+	{
+		nwritten = send(client_fd, response + total_sent, total_response - total_sent, 0);
+
+		if (nwritten < 0)
+		{
+			perror("send");
+			close(server_fd);
+			close(client_fd);
+			return;
+		}
+
+		total_sent += nwritten;
+	}
+
+	// Step 8: Close connections
+	close(server_fd);
+	close(client_fd);
+}
+
+int connect_to_server(const char *hostname, const char *port)
+{
+	struct addrinfo hints, *res, *p;
+	int server_fd;
+
+	// Zero out the hints structure
+	memset(&hints, 0, sizeof(hints));
+	hints.ai_family = AF_INET;		 // Use IPv4
+	hints.ai_socktype = SOCK_STREAM; // Use TCP
+
+	// Resolve the hostname and port into address information
+	int status = getaddrinfo(hostname, port, &hints, &res);
+	if (status != 0)
+	{
+		fprintf(stderr, "getaddrinfo error: %s\n", gai_strerror(status));
+		return -1;
+	}
+
+	// Loop through the results and connect to the first valid one
+	for (p = res; p != NULL; p = p->ai_next)
+	{
+		// Create the socket
+		server_fd = socket(p->ai_family, p->ai_socktype, p->ai_protocol);
+		if (server_fd == -1)
+		{
+			perror("socket");
+			continue; // Try the next address
+		}
+
+		// Attempt to connect to the server
+		if (connect(server_fd, p->ai_addr, p->ai_addrlen) == -1)
+		{
+			perror("connect");
+			close(server_fd); // Clean up and try the next address
+			continue;
+		}
+
+		break; // Successfully connected
+	}
+
+	// Free the address information
+	freeaddrinfo(res);
+
+	// Check if no valid address was found
+	if (p == NULL)
+	{
+		fprintf(stderr, "Error: Could not connect to server.\n");
+		return -1;
+	}
+
+	// Return the file descriptor for the connected socket
+	return server_fd;
 }
 
 int open_sfd(char **argv){
