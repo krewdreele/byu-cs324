@@ -17,7 +17,7 @@ void test_parser();
 void print_bytes(char *, int);
 int open_sfd(char **);
 void handle_client(int);
-int connect_to_server(char *, char *);
+int connect_to_server(const char *, const char *);
 
 int main(int argc, char *argv[])
 {
