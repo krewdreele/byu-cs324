@@ -5,6 +5,19 @@
 #include <sys/socket.h>
 #include <netdb.h>
 #include <unistd.h>
+#include <pthread.h>
+#include <semaphore.h>
+
+#define THREAD_POOL_SIZE 8
+#define QUEUE_SIZE 5
+
+// Shared buffer and synchronization primitives
+int client_queue[QUEUE_SIZE];
+int queue_front = 0, queue_rear = 0, queue_count = 0;
+
+pthread_mutex_t queue_lock = PTHREAD_MUTEX_INITIALIZER;
+sem_t queue_full;  // Tracks available slots in the queue
+sem_t queue_empty; // Tracks available clients in the queue
 
 /* Recommended max object size */
 #define MAX_OBJECT_SIZE 102400
@@ -19,20 +32,82 @@ int open_sfd(char **);
 void handle_client(int);
 int connect_to_server(const char *, const char *);
 
+// Add a client to the queue
+void add_to_queue(int client_fd)
+{
+	sem_wait(&queue_full);			 // Wait for an available slot
+	pthread_mutex_lock(&queue_lock); // Lock the queue
+
+	client_queue[queue_rear] = client_fd;
+	queue_rear = (queue_rear + 1) % QUEUE_SIZE; // Circular queue
+	queue_count++;
+
+	pthread_mutex_unlock(&queue_lock); // Unlock the queue
+	sem_post(&queue_empty);			   // Signal a waiting consumer
+}
+
+// Remove a client from the queue
+int remove_from_queue()
+{
+	sem_wait(&queue_empty);			 // Wait for an available client
+	pthread_mutex_lock(&queue_lock); // Lock the queue
+
+	int client_fd = client_queue[queue_front];
+	queue_front = (queue_front + 1) % QUEUE_SIZE; // Circular queue
+	queue_count--;
+
+	pthread_mutex_unlock(&queue_lock); // Unlock the queue
+	sem_post(&queue_full);			   // Signal an available slot
+	return client_fd;
+}
+
+// Consumer thread function
+void *consumer_thread(void *arg)
+{
+	while (1)
+	{
+		int client_fd = remove_from_queue(); // Get a client from the queue
+		handle_client(client_fd);			 // Handle the client
+	}
+	return NULL;
+}
+
 int main(int argc, char *argv[])
 {
 	printf("%s\n", user_agent_hdr);
 	int sfd = open_sfd(argv);
+
+	// Initialize semaphores
+	sem_init(&queue_full, 0, QUEUE_SIZE); // All slots are initially free
+	sem_init(&queue_empty, 0, 0);		  // No clients initially
+
+	// Create consumer threads
+	pthread_t thread_pool[THREAD_POOL_SIZE];
+	for (int i = 0; i < THREAD_POOL_SIZE; i++)
+	{
+		if (pthread_create(&thread_pool[i], NULL, consumer_thread, NULL) != 0)
+		{
+			perror("pthread_create");
+			exit(EXIT_FAILURE);
+		}
+	}
+
 	struct sockaddr_storage remote_addr_ss;
 	struct sockaddr *remote_addr = (struct sockaddr *)&remote_addr_ss;
 	socklen_t addr_len = sizeof(struct sockaddr_storage);
-	int fd = 0;
-	while(1){
-		
-		fd = accept(sfd, remote_addr, &addr_len);
-		
-		if(fd > 0) handle_client(fd);
+
+	while (1)
+	{
+		int client_fd = accept(sfd, remote_addr, &addr_len);
+		if (client_fd < 0)
+		{
+			perror("accept");
+			continue;
+		}
+
+		add_to_queue(client_fd); // Add the client to the queue
 	}
+
 	return 0;
 }
 
@@ -70,7 +145,7 @@ void handle_client(int client_fd)
 		{
 			break;
 		}
-	} while (nread > 0);
+	} while (1);
 
 	// Step 2: Parse the HTTP request
 	char method[16], hostname[64], port[8], path[128];
