@@ -132,7 +132,6 @@ void handle_client(int client_fd)
 		if (nread > 0)
 		{
 			total_read += nread;
-			buf[total_read] = '\0'; // Null-terminate for safety
 		}
 		else if (nread < 0)
 		{
@@ -141,7 +140,7 @@ void handle_client(int client_fd)
 			return;
 		}
 
-		if (complete_request_received(buf))
+		if (complete_request_received(buf) == 1)
 		{
 			break;
 		}
@@ -150,11 +149,6 @@ void handle_client(int client_fd)
 	// Step 2: Parse the HTTP request
 	char method[16], hostname[64], port[8], path[128];
 	parse_request(buf, method, hostname, port, path);
-
-	printf("METHOD: %s\n", method);
-	printf("HOSTNAME: %s\n", hostname);
-	printf("PORT: %s\n", port);
-	printf("PATH: %s\n", path);
 
 	// Step 3: Create a new HTTP request to send to the server
 	char request[1024];
@@ -191,7 +185,7 @@ void handle_client(int client_fd)
 	// Step 5: Send the HTTP request to the server
 	size_t total_sent = 0;
 	ssize_t nwritten;
-	size_t request_len = strlen(request);
+	size_t request_len = sizeof(request);
 
 	while (total_sent < request_len)
 	{
@@ -389,7 +383,7 @@ void parse_request( char *request, char *method, char *hostname, char *port, cha
 	const char *url_end = strchr(url_start, ' ');
 	if (url_end == NULL)
 	{
-		fprintf(stderr, "Error: Malformed request (missing URL).\n");
+		fprintf(stderr, "Error: Bad request (missing URL).\n");
 		return;
 	}
 	size_t url_len = url_end - url_start;
