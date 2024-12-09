@@ -379,10 +379,9 @@ void handle_client(int efd, struct request_info *info)
 				printf("PATH: %s\n", path);
 			
 				// Build http request for server
-				char request[1024];
 				if (strcmp(port, "80") == 0)
 				{
-					snprintf(request, sizeof(request),
+					snprintf(info->read_client, sizeof(info->read_client),
 							"%s %s HTTP/1.0\r\n"
 							"Host: %s\r\n"
 							"User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:97.0) Gecko/20100101 Firefox/97.0\r\n"
@@ -392,7 +391,7 @@ void handle_client(int efd, struct request_info *info)
 				}
 				else
 				{
-					snprintf(request, sizeof(request),
+					snprintf(info->read_client, sizeof(info->read_client),
 							"%s %s HTTP/1.0\r\n"
 							"Host: %s:%s\r\n"
 							"User-Agent: Mozilla/5.0 (Macintosh; Intel Mac OS X 10.15; rv:97.0) Gecko/20100101 Firefox/97.0\r\n"
@@ -429,9 +428,9 @@ void handle_client(int efd, struct request_info *info)
 				struct epoll_event event;
 				info->proxy_server_socket = server_fd;
 				info->state = SEND_REQUEST;
-				info->bytes_to_write_server = sizeof(request);
+				info->bytes_to_write_server = strlen(info->read_client);
 				event.data.ptr = info;
-				event.events = EPOLLOUT;
+				event.events = EPOLLOUT | EPOLLET;
 				if (epoll_ctl(efd, EPOLL_CTL_ADD, server_fd, &event) < 0)
 				{
 					perror("Error adding server fd to epoll\n");
@@ -528,7 +527,7 @@ void handle_client(int efd, struct request_info *info)
 				struct epoll_event event;
 				info->state = SEND_RESPONSE;
 				event.data.ptr = info;
-				event.events = EPOLLOUT;
+				event.events = EPOLLOUT | EPOLLET;
 				if (epoll_ctl(efd, EPOLL_CTL_ADD, info->client_proxy_socket, &event) < 0)
 				{
 					perror("Error adding server fd to epoll\n");
@@ -556,7 +555,7 @@ void handle_client(int efd, struct request_info *info)
 	}
 	else if(info->state == SEND_RESPONSE){
 		while(1){
-			int bytes_sent = write(info->client_proxy_socket, info->read_server + info->bytes_written_client, sizeof(info->read_server) - info->bytes_written_client);
+			int bytes_sent = write(info->client_proxy_socket, info->read_server + info->bytes_written_client, info->bytes_read_server - info->bytes_written_client);
 
 			if (bytes_sent > 0)
 			{
