@@ -359,13 +359,14 @@ void handle_client(int efd, struct request_info *info)
 			// Read bytes from client
 			int bytes_read = read(info->client_proxy_socket, info->read_client + info->bytes_read_client, 1024 - info->bytes_read_client);
 
-			// Append to info
-			info->bytes_read_client = info->bytes_read_client + bytes_read;
-			info->read_client[info->bytes_read_client] = '\0';
+			if(bytes_read > 0){
+				// Append to info
+				info->bytes_read_client = info->bytes_read_client + bytes_read;
+				info->read_client[info->bytes_read_client] = '\0';
+			}
 
 			// If we have a full request
 			if(complete_request_received(info->read_client)){
-				print_bytes(info->read_client, info->bytes_read_client);
 
 				// Parse the request
 				char method[16], hostname[64], port[8], path[64];
@@ -399,8 +400,6 @@ void handle_client(int efd, struct request_info *info)
 							"Proxy-Connection: close\r\n\r\n",
 							method, path, hostname, port);
 				}
-
-				print_bytes(request, info->bytes_read_client);
 
 				// Connect to the server
 				int server_fd = connect_to_server(hostname, port);
@@ -465,56 +464,60 @@ void handle_client(int efd, struct request_info *info)
 			// Write request to the server
 			int bytes_sent = write(info->proxy_server_socket, info->read_client + info->bytes_written_server, info->bytes_to_write_server - info->bytes_written_server);
 
-			info->bytes_written_server += bytes_sent;
-
-			if (info->bytes_written_server >= info->bytes_to_write_server)
+			if (bytes_sent > 0)
 			{
-				// Deregister proxy - server file descriptor
-				if (epoll_ctl(efd, EPOLL_CTL_DEL, info->proxy_server_socket, NULL) == -1)
-				{
-					perror("Error deregistering client");
-					exit(1);
-				}
-
-				// register the server file descriptor
-				// for reading events
-				struct epoll_event event;
-				event.data.ptr = info;
-				event.events = EPOLLIN | EPOLLET;
-				if (epoll_ctl(efd, EPOLL_CTL_ADD, info->proxy_server_socket, &event) < 0)
-				{
-					perror("Error adding server fd to epoll\n");
-					exit(1);
-				}
-
-				info->state = READ_RESPONSE;
-
-				return;
+				info->bytes_written_server += bytes_sent;
 			}
-
-			if (bytes_sent < 0)
-			{
-				if (errno == EWOULDBLOCK || errno == EAGAIN)
+				if (info->bytes_written_server >= info->bytes_to_write_server)
 				{
-					// nothing to be read
+					// Deregister proxy - server file descriptor
+					if (epoll_ctl(efd, EPOLL_CTL_DEL, info->proxy_server_socket, NULL) == -1)
+					{
+						perror("Error deregistering client");
+						exit(1);
+					}
+
+					// register the server file descriptor
+					// for reading events
+					struct epoll_event event;
+					event.data.ptr = info;
+					event.events = EPOLLIN | EPOLLET;
+					if (epoll_ctl(efd, EPOLL_CTL_ADD, info->proxy_server_socket, &event) < 0)
+					{
+						perror("Error adding server fd to epoll\n");
+						exit(1);
+					}
+
+					info->state = READ_RESPONSE;
+
 					return;
 				}
-				else
+
+				if (bytes_sent < 0)
 				{
-					perror("Error sending to the server");
-					close(info->client_proxy_socket);
-					free(info);
-					exit(1);
+					if (errno == EWOULDBLOCK || errno == EAGAIN)
+					{
+						// nothing to be read
+						return;
+					}
+					else
+					{
+						perror("Error sending to the server");
+						close(info->client_proxy_socket);
+						free(info);
+						exit(1);
+					}
 				}
 			}
-		}	
 	}
 	else if(info->state == READ_RESPONSE){
 		while(1){
 			// Read bytes from the server
 			int bytes_read = read(info->proxy_server_socket, info->read_server + info->bytes_read_server, sizeof(info->read_server) - info->bytes_read_server);
-			info->bytes_read_server += bytes_read;
-
+			
+			if(bytes_read > 0){
+				info->bytes_read_server += bytes_read;
+			}
 			// Successfully finished
 			if(bytes_read == 0){
 				close(info->proxy_server_socket);
@@ -551,8 +554,38 @@ void handle_client(int efd, struct request_info *info)
 			}
 		}
 	}
-	else{
-		sleep(10);
+	else if(info->state == SEND_RESPONSE){
+		while(1){
+			int bytes_sent = write(info->client_proxy_socket, info->read_server + info->bytes_written_client, sizeof(info->read_server) - info->bytes_written_client);
+
+			if (bytes_sent > 0)
+			{
+				info->bytes_written_client += bytes_sent;
+			}
+
+			if (info->bytes_written_client >= info->bytes_read_server)
+			{
+				close(info->client_proxy_socket);
+				free(info);
+				return;
+			}
+
+			if (bytes_sent < 0)
+			{
+				if (errno == EWOULDBLOCK || errno == EAGAIN)
+				{
+					// nothing to be read
+					return;
+				}
+				else
+				{
+					perror("Error sending to the server");
+					close(info->client_proxy_socket);
+					free(info);
+					exit(1);
+				}
+			}
+			}
 	}
 }
 
