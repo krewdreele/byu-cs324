@@ -2,7 +2,9 @@
     "files.associations": {
         "fcntl.h": "c",
         "netdb.h": "c",
-        "sockhelper.h": "c"
+        "sockhelper.h": "c",
+        "string.h": "c",
+        "socket.h": "c"
     },
     "C_Cpp.errorSquiggles": "disabled",
     "C_Cpp.codeAnalysis.clangTidy.checks.disabled": [
